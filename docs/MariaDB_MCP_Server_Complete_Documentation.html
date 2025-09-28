@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MariaDB MCP Server - Complete Documentation</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #2c3e50;
+            margin-top: 25px;
+        }
+        h4 {
+            color: #7f8c8d;
+            margin-top: 20px;
+        }
+        .toc {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .toc h2 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .toc li {
+            margin: 5px 0;
+        }
+        .toc a {
+            text-decoration: none;
+            color: #007bff;
+        }
+        .toc a:hover {
+            text-decoration: underline;
+        }
+        code {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 3px;
+            padding: 2px 4px;
+            font-family: 'Courier New', monospace;
+            color: #e83e8c;
+        }
+        pre {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            overflow-x: auto;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: #333;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #495057;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .architecture-diagram {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .feature-box {
+            background-color: #e8f5e8;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .error-box {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .success-box {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>MariaDB MCP Server - Complete Documentation</h1>
+    
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ul>
+            <li><a href="#project-overview">1. Project Overview</a></li>
+            <li><a href="#architecture">2. Architecture</a></li>
+            <li><a href="#features">3. Features & Capabilities</a></li>
+            <li><a href="#installation">4. Installation & Setup</a></li>
+            <li><a href="#configuration">5. Configuration</a></li>
+            <li><a href="#api-reference">6. API Reference</a></li>
+            <li><a href="#security">7. Security & Safety</a></li>
+            <li><a href="#performance">8. Performance & Reliability</a></li>
+            <li><a href="#testing">9. Testing</a></li>
+            <li><a href="#deployment">10. Deployment</a></li>
+            <li><a href="#hackathon">11. Hackathon Submission</a></li>
+            <li><a href="#contributing">12. Contributing</a></li>
+        </ul>
+    </div>
+
+    <h2 id="project-overview">1. Project Overview</h2>
+    
+    <p>The MariaDB MCP Server is a Model Context Protocol (MCP) implementation that provides AI assistants and tools with secure, observable access to MariaDB databases. It enables natural language interactions with relational data while maintaining strict security guardrails and providing optional vector store capabilities for semantic search.</p>
+
+    <div class="feature-box">
+        <h3>Key Benefits</h3>
+        <ul>
+            <li><strong>AI-Native Interface</strong>: Direct integration with AI assistants via MCP protocol</li>
+            <li><strong>Security First</strong>: Read-only mode, write allow-lists, and input validation</li>
+            <li><strong>Observability</strong>: Correlation IDs, structured logging, and health monitoring</li>
+            <li><strong>Reliability</strong>: Connection pooling, query timeouts, and rate limiting</li>
+            <li><strong>Extensibility</strong>: Pluggable embedding providers and configurable operations</li>
+        </ul>
+    </div>
+
+    <h2 id="architecture">2. Architecture</h2>
+
+    <h3>System Components</h3>
+    
+    <div class="architecture-diagram">
+        <h4>System Architecture Diagram</h4>
+        <pre>
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   AI Assistant  │───▶│   MCP Client     │───▶│  FastMCP Server │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                         │
+                                                         ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Rate Limiter   │◀───│  Tool Handler    │───▶│  Connection Pool│
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                         │
+                                                         ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Write Guard    │    │  EmbeddingService│    │    MariaDB      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │ Embedding APIs  │
+                       │ (OpenAI/Gemini/ │
+                       │  HuggingFace)   │
+                       └─────────────────┘
+        </pre>
+    </div>
+
+    <h3>Data Flow</h3>
+    <ol>
+        <li><strong>Request Processing</strong>:
+            <ul>
+                <li>Client sends MCP tool call</li>
+                <li>Rate limiter checks request frequency</li>
+                <li>Tool handler validates parameters</li>
+                <li>Write guard checks operation permissions</li>
+            </ul>
+        </li>
+        <li><strong>Query Execution</strong>:
+            <ul>
+                <li>Connection acquired from pool</li>
+                <li>Query executed with timeout protection</li>
+                <li>Results returned with correlation ID</li>
+                <li>Structured error handling</li>
+            </ul>
+        </li>
+        <li><strong>Vector Operations</strong> (Optional):
+            <ul>
+                <li>Document embedding generation</li>
+                <li>Vector similarity search</li>
+                <li>Metadata storage and retrieval</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h2 id="features">3. Features & Capabilities</h2>
+
+    <h3>Core Database Tools</h3>
+    <ul>
+        <li><code>list_databases()</code>: List all accessible databases</li>
+        <li><code>list_tables(database_name)</code>: List tables in a database</li>
+        <li><code>get_table_schema(database_name, table_name)</code>: Get column information</li>
+        <li><code>get_table_schema_with_relations(database_name, table_name)</code>: Include foreign key relationships</li>
+        <li><code>execute_sql(sql_query, database_name, parameters?)</code>: Execute read-only SQL queries</li>
+        <li><code>create_database(database_name)</code>: Create new database (when not read-only)</li>
+        <li><code>explain_sql_plan(sql_query, database_name)</code>: Get query execution plan</li>
+    </ul>
+
+    <h3>Vector Store Tools (Optional)</h3>
+    <ul>
+        <li><code>create_vector_store(database_name, vector_store_name, model_name?, distance_function?)</code>: Create vector store table</li>
+        <li><code>list_vector_stores(database_name)</code>: List all vector stores</li>
+        <li><code>delete_vector_store(database_name, vector_store_name)</code>: Remove vector store</li>
+        <li><code>insert_docs_vector_store(database_name, vector_store_name, documents, metadata?)</code>: Insert documents with embeddings</li>
+        <li><code>search_vector_store(user_query, database_name, vector_store_name, k?)</code>: Semantic search</li>
+    </ul>
+
+    <h3>System Tools</h3>
+    <ul>
+        <li><code>ping()</code>: Liveness check</li>
+        <li><code>health()</code>: System health with pool status and configuration</li>
+        <li><code>version()</code>: Server version information</li>
+    </ul>
+
+    <h3>Embedding Providers</h3>
+    <ul>
+        <li><strong>OpenAI</strong>: text-embedding-3-small, text-embedding-3-large</li>
+        <li><strong>Google Gemini</strong>: text-embedding-004</li>
+        <li><strong>Hugging Face</strong>: BAAI/bge-m3, intfloat/multilingual-e5-large-instruct</li>
+    </ul>
+
+    <h2 id="installation">4. Installation & Setup</h2>
+
+    <h3>Prerequisites</h3>
+    <ul>
+        <li>Python 3.11+</li>
+        <li>MariaDB server with VECTOR support (for vector stores)</li>
+        <li>Optional: OpenAI API key, Gemini API key, or Hugging Face model</li>
+    </ul>
+
+    <h3>Installation</h3>
+    <pre><code># Clone the repository
+git clone &lt;repository-url&gt;
+cd MariaDB_MCP
+
+# Install dependencies
+pip install -e .
+
+# Or using pip directly
+pip install asyncmy fastmcp[websockets] python-dotenv</code></pre>
+
+    <h3>Environment Configuration</h3>
+    <p>Create a <code>.env</code> file:</p>
+    <pre><code># Database Configuration
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_database
+DB_CHARSET=utf8mb4
+
+# MCP Server Configuration
+MCP_READ_ONLY=true
+MCP_MAX_POOL_SIZE=10
+MCP_QUERY_TIMEOUT_SECS=30
+
+# Rate Limiting
+MCP_RATE_LIMIT_ENABLED=true
+MCP_RATE_LIMIT_REQUESTS_PER_MINUTE=60
+MCP_RATE_LIMIT_BURST=10
+
+# Write Guardrails
+MCP_ALLOWED_WRITE_OPERATIONS=CREATE_DATABASE,CREATE_TABLE,CREATE_INDEX
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=logs/mcp_server.log
+MCP_CORRELATION_LOGGING=true
+
+# Embeddings (Optional)
+EMBEDDING_PROVIDER=openai
+OPENAI_API_KEY=your_openai_key</code></pre>
+
+    <h2 id="configuration">5. Configuration</h2>
+
+    <h3>Database Settings</h3>
+    <table>
+        <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>DB_HOST</code></td>
+            <td>localhost</td>
+            <td>MariaDB host</td>
+        </tr>
+        <tr>
+            <td><code>DB_PORT</code></td>
+            <td>3306</td>
+            <td>MariaDB port</td>
+        </tr>
+        <tr>
+            <td><code>DB_USER</code></td>
+            <td>-</td>
+            <td>Database username</td>
+        </tr>
+        <tr>
+            <td><code>DB_PASSWORD</code></td>
+            <td>-</td>
+            <td>Database password</td>
+        </tr>
+        <tr>
+            <td><code>DB_NAME</code></td>
+            <td>-</td>
+            <td>Default database</td>
+        </tr>
+        <tr>
+            <td><code>DB_CHARSET</code></td>
+            <td>-</td>
+            <td>Character set</td>
+        </tr>
+    </table>
+
+    <h3>MCP Server Settings</h3>
+    <table>
+        <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>MCP_READ_ONLY</code></td>
+            <td>true</td>
+            <td>Enable read-only mode</td>
+        </tr>
+        <tr>
+            <td><code>MCP_MAX_POOL_SIZE</code></td>
+            <td>10</td>
+            <td>Connection pool size</td>
+        </tr>
+        <tr>
+            <td><code>MCP_QUERY_TIMEOUT_SECS</code></td>
+            <td>30</td>
+            <td>Query timeout in seconds</td>
+        </tr>
+    </table>
+
+    <h3>Rate Limiting</h3>
+    <table>
+        <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>MCP_RATE_LIMIT_ENABLED</code></td>
+            <td>true</td>
+            <td>Enable rate limiting</td>
+        </tr>
+        <tr>
+            <td><code>MCP_RATE_LIMIT_REQUESTS_PER_MINUTE</code></td>
+            <td>60</td>
+            <td>Requests per minute</td>
+        </tr>
+        <tr>
+            <td><code>MCP_RATE_LIMIT_BURST</code></td>
+            <td>10</td>
+            <td>Burst capacity</td>
+        </tr>
+    </table>
+
+    <h3>Security</h3>
+    <table>
+        <tr>
+            <th>Variable</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>MCP_ALLOWED_WRITE_OPERATIONS</code></td>
+            <td>CREATE_DATABASE,CREATE_TABLE,CREATE_INDEX</td>
+            <td>Allowed write operations</td>
+        </tr>
+        <tr>
+            <td><code>ALLOWED_ORIGINS</code></td>
+            <td>localhost,127.0.0.1</td>
+            <td>CORS allowed origins</td>
+        </tr>
+        <tr>
+            <td><code>ALLOWED_HOSTS</code></td>
+            <td>localhost,127.0.0.1</td>
+            <td>Trusted hosts</td>
+        </tr>
+    </table>
+
+    <h2 id="api-reference">6. API Reference</h2>
+
+    <h3>Tool Parameters</h3>
+
+    <h4><code>execute_sql</code></h4>
+    <pre><code>execute_sql(
+    sql_query: str,           # SQL query (SELECT, SHOW, DESCRIBE only)
+    database_name: str,        # Target database
+    parameters: List[Any]      # Optional query parameters
+) -> List[Dict[str, Any]]</code></pre>
+
+    <h4><code>search_vector_store</code></h4>
+    <pre><code>search_vector_store(
+    user_query: str,           # Natural language query
+    database_name: str,        # Database containing vector store
+    vector_store_name: str,    # Vector store table name
+    k: int = 7                # Number of results to return
+) -> List[Dict[str, Any]]</code></pre>
+
+    <h3>Response Format</h3>
+
+    <h4>Success Response</h4>
+    <pre><code>[
+    {
+        "id": 1,
+        "document": "Sample text",
+        "metadata": {"source": "file1.txt"},
+        "distance": 0.123
+    }
+]</code></pre>
+
+    <h4>Error Response</h4>
+    <pre><code>{
+    "error_code": "RATE_LIMIT_EXCEEDED",
+    "message": "Request rate limit exceeded",
+    "details": {
+        "limit": 60,
+        "burst": 10
+    },
+    "correlation_id": "abc12345"
+}</code></pre>
+
+    <h2 id="security">7. Security & Safety</h2>
+
+    <h3>Read-Only Mode</h3>
+    <ul>
+        <li>Blocks all non-SELECT operations when enabled</li>
+        <li>Prevents accidental data modification</li>
+        <li>Configurable via <code>MCP_READ_ONLY</code> environment variable</li>
+    </ul>
+
+    <h3>Write Guardrails</h3>
+    <ul>
+        <li>Allow-list of permitted write operations</li>
+        <li>Configurable via <code>MCP_ALLOWED_WRITE_OPERATIONS</code></li>
+        <li>Default: CREATE_DATABASE, CREATE_TABLE, CREATE_INDEX</li>
+    </ul>
+
+    <h3>Input Validation</h3>
+    <ul>
+        <li>Safe identifier validation for database/table names</li>
+        <li>SQL injection prevention through parameterized queries</li>
+        <li>Query comment stripping and sanitization</li>
+    </ul>
+
+    <h3>Rate Limiting</h3>
+    <ul>
+        <li>Token bucket algorithm with configurable limits</li>
+        <li>Per-client request tracking</li>
+        <li>Prevents abuse and DoS attacks</li>
+    </ul>
+
+    <h2 id="performance">8. Performance & Reliability</h2>
+
+    <h3>Connection Pooling</h3>
+    <ul>
+        <li>Async connection pool using asyncmy</li>
+        <li>Configurable pool size and recycling</li>
+        <li>Automatic connection health checks</li>
+    </ul>
+
+    <h3>Query Timeouts</h3>
+    <ul>
+        <li>Configurable query timeout (default: 30 seconds)</li>
+        <li>Prevents runaway queries</li>
+        <li>Structured timeout error responses</li>
+    </ul>
+
+    <h3>Observability</h3>
+    <ul>
+        <li>Correlation IDs for request tracking</li>
+        <li>Structured logging with configurable levels</li>
+        <li>Health and version endpoints</li>
+        <li>Rotating log files with size limits</li>
+    </ul>
+
+    <h3>Error Handling</h3>
+    <ul>
+        <li>Structured error responses with error codes</li>
+        <li>Detailed error context and correlation IDs</li>
+        <li>Graceful degradation and recovery</li>
+    </ul>
+
+    <h2 id="testing">9. Testing</h2>
+
+    <h3>Running Tests</h3>
+    <pre><code># Run all tests
+python -m pytest src/tests/
+
+# Run specific test file
+python -m pytest src/tests/test_mariadb_mcp_tools.py
+
+# Run with coverage
+python -m pytest --cov=src src/tests/</code></pre>
+
+    <h3>Test Categories</h3>
+    <ul>
+        <li><strong>Unit Tests</strong>: Individual tool functionality</li>
+        <li><strong>Integration Tests</strong>: End-to-end MCP server behavior</li>
+        <li><strong>Error Handling</strong>: Exception scenarios and edge cases</li>
+        <li><strong>Security Tests</strong>: Input validation and access control</li>
+    </ul>
+
+    <h2 id="deployment">10. Deployment</h2>
+
+    <h3>Docker Deployment</h3>
+    <pre><code># Build image
+docker build -t mariadb-mcp-server .
+
+# Run container
+docker run -d \
+  --name mariadb-mcp \
+  -p 9001:9001 \
+  -e DB_HOST=your_host \
+  -e DB_USER=your_user \
+  -e DB_PASSWORD=your_password \
+  mariadb-mcp-server</code></pre>
+
+    <h3>Docker Compose</h3>
+    <pre><code>version: '3.8'
+services:
+  mariadb-mcp:
+    build: .
+    ports:
+      - "9001:9001"
+    environment:
+      - DB_HOST=mariadb
+      - DB_USER=root
+      - DB_PASSWORD=password
+    depends_on:
+      - mariadb</code></pre>
+
+    <h3>Production Considerations</h3>
+    <ul>
+        <li>Use environment variables for sensitive configuration</li>
+        <li>Configure appropriate log levels and rotation</li>
+        <li>Set up monitoring and alerting</li>
+        <li>Consider load balancing for high availability</li>
+    </ul>
+
+    <h2 id="hackathon">11. Hackathon Submission</h2>
+
+    <div class="highlight">
+        <h3>Idea Title</h3>
+        <p><strong>MariaDB MCP Server: AI-Native Interface for Relational + Vector Workloads</strong></p>
+    </div>
+
+    <h3>Problem Statement</h3>
+    <p>Organizations want to leverage AI agents to interact with operational and analytical data safely. Traditional database access patterns are not AI-friendly, lack semantic capabilities, and risk unsafe writes or long-running queries. Teams need a secure, observable, AI-native interface to query structured data and perform semantic search with guardrails.</p>
+
+    <h3>Approach</h3>
+    <p>Expose MariaDB through the Model Context Protocol (MCP) so AI assistants can call tools for schema discovery, read-only SQL, and vector search. Add reliability (timeouts, pooling), safety (read-only mode, write allow-list), abuse prevention (rate limiting), and observability (structured errors, correlation IDs). Optional embeddings support enables vector stores for semantic search at the database layer.</p>
+
+    <h3>Use Cases</h3>
+    <ul>
+        <li><strong>Analysts</strong>: Ask natural questions via AI to retrieve tables, schemas, and summaries</li>
+        <li><strong>Developers</strong>: Use MCP tools in IDE assistants to inspect DBs and run safe queries</li>
+        <li><strong>LLM Apps</strong>: Perform RAG against vector stores in MariaDB with consistent security controls</li>
+    </ul>
+
+    <div class="success-box">
+        <h3>LinkedIn Post Template</h3>
+        <p><em>Signed up for the #mariadb #python #hackathon with my idea "MariaDB MCP Server: AI-Native Interface for Relational + Vector Workloads". Excited to bring safe, observable, AI-powered data access to life! #LLM #RAG #MCP @MariaDB @Hackerearth</em></p>
+    </div>
+
+    <h2 id="contributing">12. Contributing</h2>
+
+    <h3>Development Setup</h3>
+    <ol>
+        <li>Fork the repository</li>
+        <li>Create a feature branch</li>
+        <li>Make changes with tests</li>
+        <li>Submit a pull request</li>
+    </ol>
+
+    <h3>Code Style</h3>
+    <ul>
+        <li>Follow PEP 8 guidelines</li>
+        <li>Use type hints</li>
+        <li>Add docstrings for public methods</li>
+        <li>Include tests for new features</li>
+    </ul>
+
+    <h3>Testing Requirements</h3>
+    <ul>
+        <li>All new features must include tests</li>
+        <li>Maintain or improve test coverage</li>
+        <li>Test both success and error scenarios</li>
+    </ul>
+
+    <hr>
+
+    <h2>License</h2>
+    <p>This project is licensed under the MIT License - see the LICENSE file for details.</p>
+
+    <h2>Support</h2>
+    <p>For questions, issues, or contributions:</p>
+    <ul>
+        <li>Create an issue in the repository</li>
+        <li>Check the documentation</li>
+        <li>Review the test examples</li>
+    </ul>
+
+    <hr>
+
+    <p><em>This documentation covers the complete MariaDB MCP Server implementation, including all features, configuration options, security measures, and deployment instructions.</em></p>
+
+</body>
+</html>

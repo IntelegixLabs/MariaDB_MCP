@@ -1,0 +1,22 @@
+flowchart TD
+  A[Client / AI Assistant] -->|MCP call| B[FastMCP Server]
+  B --> C{Rate limiter}
+  C -->|allowed| D[Tool Handler]
+  C -->|blocked| E[Structured Error]
+  D --> F{Read-only / Write allow-list}
+  F -->|blocked| E
+  F -->|allowed| G[_execute_query (timeout, pool)]
+  G --> H[(MariaDB)]
+  D --> I[EmbeddingService]
+  I --> J[(Embedding Provider)]
+  D --> K[Structured Response]
+  E --> K
+  K --> A
+
+  subgraph Observability
+    L[Correlation ID]
+    M[Rotating Logs]
+  end
+  B -. logs .-> M
+  D -. correlate .-> L
+

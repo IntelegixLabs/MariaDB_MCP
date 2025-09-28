@@ -16,6 +16,8 @@ The MCP MariaDB Server provides a Model Context Protocol (MCP) interface for man
 - [Integration - Claude desktop/Cursor/Windsurf](#integration---claude-desktopcursorwindsurf)
 - [Logging](#logging)
 - [Testing](#testing)
+- [Documentation](#documentation)
+- [Hackathon Submission](#hackathon-submission)
 ---
 
 ## Overview
@@ -46,6 +48,28 @@ Recent improvements and additions:
   - Fixed docker-compose healthcheck password flag quoting.
 - Testing reliability
   - Fixed async teardown to properly await pool close.
+
+---
+
+## Documentation
+
+- Project documentation: `docs/Project_Documentation.md`
+- Architecture diagram (Mermaid): `docs/Architecture.mmd`
+
+To export the architecture diagram:
+- Use a Mermaid-compatible renderer (e.g., the VS Code Mermaid extension) or an online renderer to export to PNG/PDF.
+
+---
+
+## Hackathon Submission
+
+The repository includes a one-page idea submission (Markdown) that you can export to PDF:
+- `docs/Hackathon_Idea_OnePager.md`
+
+Suggested PDF export methods:
+- VS Code/Editor “Export as PDF”
+- Pandoc: `pandoc docs/Hackathon_Idea_OnePager.md -o Idea_OnePager.pdf`
+- Paste into Google Docs/Notion and export
 - Cross-database querying (new)
   - New tool: `external_execute_sql` to run read-only queries against PostgreSQL and SQLite.
   - Optional dependencies added: `asyncpg`, `aiosqlite`.
