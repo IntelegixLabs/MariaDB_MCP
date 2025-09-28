@@ -69,6 +69,19 @@ DB_CHARSET = os.getenv("DB_CHARSET")
 # Read-only mode
 MCP_READ_ONLY = os.getenv("MCP_READ_ONLY", "true").lower() == "true"
 MCP_MAX_POOL_SIZE = int(os.getenv("MCP_MAX_POOL_SIZE", 10))
+MCP_QUERY_TIMEOUT_SECS = float(os.getenv("MCP_QUERY_TIMEOUT_SECS", 30))
+
+# Rate limiting configuration
+MCP_RATE_LIMIT_ENABLED = os.getenv("MCP_RATE_LIMIT_ENABLED", "true").lower() == "true"
+MCP_RATE_LIMIT_REQUESTS_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_REQUESTS_PER_MINUTE", 60))
+MCP_RATE_LIMIT_BURST = int(os.getenv("MCP_RATE_LIMIT_BURST", 10))
+
+# Write-mode guardrails
+MCP_ALLOWED_WRITE_OPERATIONS = os.getenv("MCP_ALLOWED_WRITE_OPERATIONS", "CREATE_DATABASE,CREATE_TABLE,CREATE_INDEX,ALTER_TABLE_ADD_COLUMN,ALTER_TABLE_ADD_INDEX").split(",")
+MCP_ALLOWED_WRITE_OPERATIONS = [op.strip().upper() for op in MCP_ALLOWED_WRITE_OPERATIONS if op.strip()]
+
+# Request correlation logging
+MCP_CORRELATION_LOGGING = os.getenv("MCP_CORRELATION_LOGGING", "true").lower() == "true"
 
 # --- Embedding Configuration ---
 # Provider selection ('openai' or 'gemini' or 'huggingface')

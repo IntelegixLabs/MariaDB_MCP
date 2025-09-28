@@ -4,19 +4,26 @@
 from config import (
     DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, DB_CHARSET,
     MCP_READ_ONLY, MCP_MAX_POOL_SIZE, EMBEDDING_PROVIDER,
-    ALLOWED_ORIGINS, ALLOWED_HOSTS,
+    ALLOWED_ORIGINS, ALLOWED_HOSTS, MCP_QUERY_TIMEOUT_SECS,
+    MCP_RATE_LIMIT_ENABLED, MCP_RATE_LIMIT_REQUESTS_PER_MINUTE, MCP_RATE_LIMIT_BURST,
+    MCP_ALLOWED_WRITE_OPERATIONS, MCP_CORRELATION_LOGGING,
     logger
 )
 
 import asyncio
 import argparse
 import re
+import time
+import uuid
 from typing import List, Dict, Any, Optional
 from functools import partial 
+from collections import defaultdict, deque
+from dataclasses import dataclass
 
 import asyncmy
 import anyio 
 from fastmcp import FastMCP, Context
+from importlib.metadata import version as pkg_version, PackageNotFoundError
 
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
@@ -40,6 +47,64 @@ try:
 except Exception:
     aiosqlite = None  # optional
 
+# --- Structured Error Classes ---
+@dataclass
+class MCPError:
+    """Structured error response for MCP tools."""
+    error_code: str
+    message: str
+    details: Optional[Dict[str, Any]] = None
+    correlation_id: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        result = {
+            "error_code": self.error_code,
+            "message": self.message
+        }
+        if self.details:
+            result["details"] = self.details
+        if self.correlation_id:
+            result["correlation_id"] = self.correlation_id
+        return result
+
+# --- Rate Limiter Class ---
+class RateLimiter:
+    """Token bucket rate limiter for MCP tools."""
+    
+    def __init__(self, requests_per_minute: int, burst: int):
+        self.requests_per_minute = requests_per_minute
+        self.burst = burst
+        self.tokens = burst
+        self.last_refill = time.time()
+        self.requests = defaultdict(deque)  # per-client tracking
+    
+    def is_allowed(self, client_id: str = "default") -> bool:
+        """Check if request is allowed for given client."""
+        now = time.time()
+        
+        # Refill tokens based on time elapsed
+        time_elapsed = now - self.last_refill
+        tokens_to_add = time_elapsed * (self.requests_per_minute / 60.0)
+        self.tokens = min(self.burst, self.tokens + tokens_to_add)
+        self.last_refill = now
+        
+        # Check if we have tokens available
+        if self.tokens >= 1:
+            self.tokens -= 1
+            return True
+        
+        # Track request for this client
+        client_requests = self.requests[client_id]
+        client_requests.append(now)
+        
+        # Remove requests older than 1 minute
+        cutoff = now - 60
+        while client_requests and client_requests[0] < cutoff:
+            client_requests.popleft()
+        
+        # Check client-specific rate
+        return len(client_requests) <= self.requests_per_minute
+
 # --- MariaDB MCP Server Class ---
 class MariaDBServer:
     """
@@ -51,9 +116,20 @@ class MariaDBServer:
         self.pool: Optional[asyncmy.Pool] = None
         self.autocommit = not MCP_READ_ONLY
         self.is_read_only = MCP_READ_ONLY
+        
+        # Initialize rate limiter
+        self.rate_limiter = RateLimiter(
+            MCP_RATE_LIMIT_REQUESTS_PER_MINUTE, 
+            MCP_RATE_LIMIT_BURST
+        ) if MCP_RATE_LIMIT_ENABLED else None
+        
         logger.info(f"Initializing {server_name}...")
         if self.is_read_only:
             logger.warning("Server running in READ-ONLY mode. Write operations are disabled.")
+        if self.rate_limiter:
+            logger.info(f"Rate limiting enabled: {MCP_RATE_LIMIT_REQUESTS_PER_MINUTE} req/min, burst: {MCP_RATE_LIMIT_BURST}")
+        if MCP_ALLOWED_WRITE_OPERATIONS:
+            logger.info(f"Allowed write operations: {', '.join(MCP_ALLOWED_WRITE_OPERATIONS)}")
 
     @staticmethod
     def _is_safe_identifier(name: Optional[str]) -> bool:
@@ -64,6 +140,38 @@ class MariaDBServer:
         if not isinstance(name, str) or not name:
             return False
         return re.fullmatch(r"[A-Za-z0-9_]+", name) is not None
+    
+    def _check_rate_limit(self, client_id: str = "default") -> bool:
+        """Check if request is within rate limits."""
+        if not self.rate_limiter:
+            return True
+        return self.rate_limiter.is_allowed(client_id)
+    
+    def _validate_write_operation(self, sql_query: str) -> bool:
+        """Validate if write operation is allowed based on guardrails."""
+        if self.is_read_only:
+            return False
+        
+        if not MCP_ALLOWED_WRITE_OPERATIONS:
+            return True  # No restrictions
+        
+        query_upper = sql_query.strip().upper()
+        
+        # Check for allowed operations
+        for allowed_op in MCP_ALLOWED_WRITE_OPERATIONS:
+            if query_upper.startswith(allowed_op):
+                return True
+        
+        return False
+    
+    def _generate_correlation_id(self) -> str:
+        """Generate a unique correlation ID for request tracking."""
+        return str(uuid.uuid4())[:8]
+    
+    def _log_request(self, tool_name: str, correlation_id: str, **kwargs):
+        """Log request with correlation ID if enabled."""
+        if MCP_CORRELATION_LOGGING:
+            logger.info(f"[{correlation_id}] {tool_name} called", extra=kwargs)
 
     async def create_vector_store(self, database_name: str, vector_store_name: str, model_name: Optional[str] = None, distance_function: Optional[str] = None) -> dict:
         """
@@ -137,31 +245,64 @@ class MariaDBServer:
             finally:
                 self.pool = None
 
-    async def _execute_query(self, sql: str, params: Optional[tuple] = None, database: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Helper function to execute SELECT queries using the pool."""
+    async def _execute_query(self, sql: str, params: Optional[tuple] = None, database: Optional[str] = None, 
+                           client_id: str = "default", correlation_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Helper function to execute queries using the pool with rate limiting and validation."""
         if self.pool is None:
-            logger.error("Connection pool is not initialized.")
-            raise RuntimeError("Database connection pool not available.")
+            error = MCPError(
+                error_code="POOL_NOT_READY",
+                message="Database connection pool not available",
+                correlation_id=correlation_id
+            )
+            logger.error(f"[{correlation_id}] {error.message}")
+            raise RuntimeError(error.to_dict())
+
+        # Check rate limiting
+        if not self._check_rate_limit(client_id):
+            error = MCPError(
+                error_code="RATE_LIMIT_EXCEEDED",
+                message="Request rate limit exceeded",
+                details={"limit": MCP_RATE_LIMIT_REQUESTS_PER_MINUTE, "burst": MCP_RATE_LIMIT_BURST},
+                correlation_id=correlation_id
+            )
+            logger.warning(f"[{correlation_id}] Rate limit exceeded for client {client_id}")
+            raise RuntimeError(error.to_dict())
 
         allowed_prefixes = ('SELECT', 'SHOW', 'DESC', 'DESCRIBE', 'USE')
         
         # Strip SQL comments from query
-        # Remove single-line comments (-- comment)
         sql_no_comments = re.sub(r'--.*?$', '', sql, flags=re.MULTILINE)
-        # Remove multi-line comments (/* comment */)
         sql_no_comments = re.sub(r'/\*.*?\*/', '', sql_no_comments, flags=re.DOTALL)
         sql_no_comments = sql_no_comments.strip()
         
         query_upper = sql_no_comments.upper()
         is_allowed_read_query = any(query_upper.startswith(prefix) for prefix in allowed_prefixes)
 
+        # Check read-only mode
         if self.is_read_only and not is_allowed_read_query:
-             logger.warning(f"Blocked potentially non-read-only query in read-only mode: {sql[:100]}...")
-             raise PermissionError("Operation forbidden: Server is in read-only mode.")
+            error = MCPError(
+                error_code="READ_ONLY_MODE",
+                message="Operation forbidden: Server is in read-only mode",
+                details={"query": sql[:100]},
+                correlation_id=correlation_id
+            )
+            logger.warning(f"[{correlation_id}] Blocked write operation in read-only mode: {sql[:100]}...")
+            raise PermissionError(error.to_dict())
 
-        logger.info(f"Executing query (DB: {database or DB_NAME}): {sql[:100]}...")
+        # Check write operation guardrails
+        if not is_allowed_read_query and not self._validate_write_operation(sql):
+            error = MCPError(
+                error_code="WRITE_OPERATION_NOT_ALLOWED",
+                message="Write operation not in allowed list",
+                details={"query": sql[:100], "allowed_operations": MCP_ALLOWED_WRITE_OPERATIONS},
+                correlation_id=correlation_id
+            )
+            logger.warning(f"[{correlation_id}] Blocked write operation not in allowlist: {sql[:100]}...")
+            raise PermissionError(error.to_dict())
+
+        logger.info(f"[{correlation_id}] Executing query (DB: {database or DB_NAME}): {sql[:100]}...")
         if params:
-            logger.debug(f"Parameters: {params}")
+            logger.debug(f"[{correlation_id}] Parameters: {params}")
 
         conn = None
         try:
@@ -175,30 +316,56 @@ class MariaDBServer:
                     actual_current_db = current_db_name or pool_db_name
 
                     if database and database != actual_current_db:
-                        logger.info(f"Switching database context from '{actual_current_db}' to '{database}'")
+                        logger.info(f"[{correlation_id}] Switching database context from '{actual_current_db}' to '{database}'")
                         await cursor.execute(f"USE `{database}`")
 
-                    await cursor.execute(sql, params or ())
-                    results = await cursor.fetchall()
-                    logger.info(f"Query executed successfully, {len(results)} rows returned.")
+                    async with anyio.fail_after(MCP_QUERY_TIMEOUT_SECS):
+                        await cursor.execute(sql, params or ())
+                        results = await cursor.fetchall()
+                    logger.info(f"[{correlation_id}] Query executed successfully, {len(results)} rows returned.")
                     return results if results else []
         except AsyncMyError as e:
             conn_state = f"Connection: {'acquired' if conn else 'not acquired'}"
-            logger.error(f"Database error executing query ({conn_state}): {e}", exc_info=True)
-            # Check for specific connection-related errors if possible
-            raise RuntimeError(f"Database error: {e}") from e
+            error = MCPError(
+                error_code="DATABASE_ERROR",
+                message=f"Database error: {e}",
+                details={"connection_state": conn_state},
+                correlation_id=correlation_id
+            )
+            logger.error(f"[{correlation_id}] Database error executing query ({conn_state}): {e}", exc_info=True)
+            raise RuntimeError(error.to_dict()) from e
         except PermissionError as e:
-             logger.warning(f"Permission denied: {e}")
-             raise e
+            # Re-raise permission errors as-is (they already have structured format)
+            logger.warning(f"[{correlation_id}] Permission denied: {e}")
+            raise e
+        except anyio.get_cancelled_exc_class() as e:
+            error = MCPError(
+                error_code="QUERY_TIMEOUT",
+                message=f"Query timed out after {MCP_QUERY_TIMEOUT_SECS} seconds",
+                details={"timeout_seconds": MCP_QUERY_TIMEOUT_SECS},
+                correlation_id=correlation_id
+            )
+            logger.error(f"[{correlation_id}] Query timeout: {e}")
+            raise RuntimeError(error.to_dict()) from e
         except Exception as e:
-            # Catch potential loop closed errors here too, although ideally fixed by structure change
             if isinstance(e, RuntimeError) and 'Event loop is closed' in str(e):
-                 logger.critical("Detected closed event loop during query execution!", exc_info=True)
-                 # This indicates a fundamental problem with loop management still exists
-                 raise RuntimeError("Event loop closed unexpectedly during query.") from e
+                error = MCPError(
+                    error_code="EVENT_LOOP_CLOSED",
+                    message="Event loop closed unexpectedly during query",
+                    correlation_id=correlation_id
+                )
+                logger.critical(f"[{correlation_id}] Detected closed event loop during query execution!", exc_info=True)
+                raise RuntimeError(error.to_dict()) from e
+            
             conn_state = f"Connection: {'acquired' if conn else 'not acquired'}"
-            logger.error(f"Unexpected error during query execution ({conn_state}): {e}", exc_info=True)
-            raise RuntimeError(f"An unexpected error occurred: {e}") from e
+            error = MCPError(
+                error_code="UNEXPECTED_ERROR",
+                message=f"An unexpected error occurred: {e}",
+                details={"connection_state": conn_state},
+                correlation_id=correlation_id
+            )
+            logger.error(f"[{correlation_id}] Unexpected error during query execution ({conn_state}): {e}", exc_info=True)
+            raise RuntimeError(error.to_dict()) from e
             
     async def _database_exists(self, database_name: str) -> bool:
         """Checks if a database exists."""
@@ -842,9 +1009,20 @@ class MariaDBServer:
              raise RuntimeError("Database pool must be initialized before registering tools.")
 
         @self.mcp.tool
+        async def ping() -> Dict[str, Any]:
+            """Simple liveness check; verifies DB pool and returns server info."""
+            return {"status": "ok", "pool": "ready" if self.pool else "not_ready"}
+
+        @self.mcp.tool
         async def list_databases() -> List[str]:
             """Lists all accessible databases on the connected MariaDB server."""
-            return await self.list_databases()
+            correlation_id = self._generate_correlation_id()
+            self._log_request("list_databases", correlation_id)
+            try:
+                return await self.list_databases()
+            except Exception as e:
+                logger.error(f"[{correlation_id}] list_databases failed: {e}", exc_info=True)
+                raise
             
         @self.mcp.tool
         async def list_tables(database_name: str) -> List[str]:
@@ -864,7 +1042,15 @@ class MariaDBServer:
         @self.mcp.tool
         async def execute_sql(sql_query: str, database_name: str, parameters: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
             """Executes a read-only SQL query against a specified database."""
-            return await self.execute_sql(sql_query, database_name, parameters)
+            correlation_id = self._generate_correlation_id()
+            self._log_request("execute_sql", correlation_id, 
+                           database_name=database_name, 
+                           query_length=len(sql_query))
+            try:
+                return await self.execute_sql(sql_query, database_name, parameters)
+            except Exception as e:
+                logger.error(f"[{correlation_id}] execute_sql failed: {e}", exc_info=True)
+                raise
             
         @self.mcp.tool
         async def create_database(database_name: str) -> Dict[str, Any]:
@@ -900,11 +1086,36 @@ class MariaDBServer:
         # Basic health and version tools
         @self.mcp.tool
         async def health() -> Dict[str, Any]:
-            return {"status": "ok", "read_only": self.is_read_only, "pool": "ready" if self.pool else "not_ready"}
+            return {
+                "status": "ok",
+                "read_only": self.is_read_only,
+                "pool": "ready" if self.pool else "not_ready",
+                "timeout_secs": MCP_QUERY_TIMEOUT_SECS,
+            }
 
         @self.mcp.tool
         async def version() -> Dict[str, Any]:
-            return {"name": "mariadb-server", "version": "0.2.2"}
+            try:
+                ver = pkg_version("mariadb-server")
+            except PackageNotFoundError:
+                ver = "unknown"
+            return {"name": "mariadb-server", "version": ver}
+
+        @self.mcp.tool
+        async def explain_sql_plan(sql_query: str, database_name: str) -> List[Dict[str, Any]]:
+            """Returns EXPLAIN plan for a SELECT query in the given database."""
+            correlation_id = self._generate_correlation_id()
+            self._log_request("explain_sql_plan", correlation_id, 
+                           database_name=database_name, 
+                           query_length=len(sql_query))
+            try:
+                if not sql_query.strip().upper().startswith("SELECT"):
+                    raise ValueError("Only SELECT queries are supported for explain_sql_plan.")
+                plan_sql = f"EXPLAIN {sql_query}"
+                return await self.execute_sql(plan_sql, database_name)
+            except Exception as e:
+                logger.error(f"[{correlation_id}] explain_sql_plan failed: {e}", exc_info=True)
+                raise
                 
         logger.info("Registered MCP tools explicitly.")
 
